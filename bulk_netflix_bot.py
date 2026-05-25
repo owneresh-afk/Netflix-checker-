@@ -578,7 +578,7 @@ async def process_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, uid:
     user_data[uid]['free'] += f
     user_data[uid]['invalid'] += i
     user_data[uid]['last_check'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        del active_batches[uid]
+    del active_batches[uid]
 
 
 async def generate_result_files(uid: int, results: List[Dict], batch_data: Dict) -> Dict:
