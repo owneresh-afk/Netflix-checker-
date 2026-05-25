@@ -62,7 +62,7 @@
 ```bash
 # Clone repository
 git clone https://github.com/owneresh-afk/Netflix-checker-/tree/main
-cd Netflix 
+cd bulk_netflix_bot.py 
 
 # Install dependencies
 pip install -r requirements.txt
@@ -71,4 +71,4 @@ pip install -r requirements.txt
 export BOT_TOKEN="your_bot_token_here"
 
 # Run bot
-python main.py
+python bulk_netflix_bot.py
