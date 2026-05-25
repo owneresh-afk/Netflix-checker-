@@ -578,15 +578,19 @@ async def process_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, uid:
     user_data[uid]['free'] += f
     user_data[uid]['invalid'] += i
     user_data[uid]['last_check'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    del active_batches[uid]
-  async def generate_result_files(uid: int, results: List[Dict], batch_data: Dict) -> Dict:
+        del active_batches[uid]
+
+
+async def generate_result_files(uid: int, results: List[Dict], batch_data: Dict) -> Dict:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = f"bulk_results/{uid}_{ts}"
     os.makedirs(base, exist_ok=True)
     premium_lines, free_lines, invalid_lines = [], [], []
+    
     for r in results:
         res = r['result']
         cookies = r['cookies']
+        
         if res.get('premium'):
             info = res['info']
             nft = res.get('nftoken')
@@ -597,40 +601,68 @@ async def process_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, uid:
             line += f"⏸️ On Hold: {info.get('on_hold','No')}\n✅ Email Verified: {info.get('email_verified','No')}\n"
             line += f"📅 Member Since: {info.get('member_since','N/A')}\n🗓️ Next Billing: {info.get('next_billing','N/A')}\n"
             line += f"🎭 Profiles: {info.get('profiles','N/A')}\n\n"
+            
             if nft:
                 line += f"{S['link']} NFToken Login Links\n"
                 line += f"🖥️ PC: https://www.netflix.com/login?nftoken={nft['token']}\n"
                 line += f"📱 Mobile: https://www.netflix.com/unsupported?nftoken={nft['token']}\n"
                 line += f"⏣ Expires: {get_nftoken_expiry(nft.get('expires'))}\n\n"
+            
             line += f"🍪 Cookies:\n{json.dumps(cookies, indent=2)}\n{S['line']*50}\n\n"
             premium_lines.append(line)
+            
         elif res.get('valid'):
             info = res['info']
             line = f"{S['line']*40}\n📧 Email: {info.get('email','N/A')}\n👤 Owner: {info.get('owner','N/A')}\n"
             line += f"🌍 Country: {info.get('country','N/A')}\n📦 Plan: {info.get('plan','FREE/STANDARD')}\n"
             line += f"📺 Quality: {info.get('quality','N/A')}\n📱 Streams: {info.get('streams','N/A')}\n"
-            line += f"🎭 Profiles: {info.get('profiles','N/A')}\n\n🍪 Cookies:\n{json.dumps(cookies, indent=2)}\n{S['line']*40}\n\n"
+            line += f"🎭 Profiles: {info.get('profiles','N/A')}\n\n"
+            line += f"🍪 Cookies:\n{json.dumps(cookies, indent=2)}\n{S['line']*40}\n\n"
             free_lines.append(line)
+            
         else:
             invalid_lines.append(f"{S['cross']} Invalid Cookie\n🍪 Cookies: {json.dumps(cookies)}\n⚠️ Error: {res.get('error','Invalid/Expired')}\n{S['line']*40}\n\n")
+    
     with open(f"{base}/premium_accounts.txt", 'w', encoding='utf-8') as f:
-        f.writelines(premium_lines) if premium_lines else f.write("No premium accounts\n")
+        if premium_lines:
+            f.writelines(premium_lines)
+        else:
+            f.write("No premium accounts found\n")
+    
     with open(f"{base}/free_accounts.txt", 'w', encoding='utf-8') as f:
-        f.writelines(free_lines) if free_lines else f.write("No free accounts\n")
+        if free_lines:
+            f.writelines(free_lines)
+        else:
+            f.write("No free accounts found\n")
+    
     with open(f"{base}/invalid_accounts.txt", 'w', encoding='utf-8') as f:
-        f.writelines(invalid_lines) if invalid_lines else f.write("No invalid accounts\n")
-    summary = f"{S['double_line']*48}\nBATCH SUMMARY\n{S['double_line']*48}\n"
-    summary += f"Date: {datetime.now()}\nUser: {uid}\nTotal: {batch_data['total']}\nValid: {batch_data['valid']}\n"
-    summary += f"Premium: {batch_data['premium']}\nFree: {batch_data['free']}\nInvalid: {batch_data['invalid']}\n"
+        if invalid_lines:
+            f.writelines(invalid_lines)
+        else:
+            f.write("No invalid accounts\n")
+    
+    summary = f"{S['double_line']*48}\n"
+    summary += f"BATCH SUMMARY\n"
+    summary += f"{S['double_line']*48}\n"
+    summary += f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    summary += f"User ID: {uid}\n"
+    summary += f"Total Cookies: {batch_data['total']}\n"
+    summary += f"Valid Accounts: {batch_data['valid']}\n"
+    summary += f"Premium Accounts: {batch_data['premium']}\n"
+    summary += f"Free Accounts: {batch_data['free']}\n"
+    summary += f"Invalid Cookies: {batch_data['invalid']}\n"
     summary += f"Success Rate: {(batch_data['valid']/batch_data['total']*100):.1f}%\n"
+    
     with open(f"{base}/summary.txt", 'w', encoding='utf-8') as f:
         f.write(summary)
+    
     zip_path = f"{base}.zip"
     with zipfile.ZipFile(zip_path, 'w') as zf:
         zf.write(f"{base}/premium_accounts.txt", "premium_accounts.txt")
         zf.write(f"{base}/free_accounts.txt", "free_accounts.txt")
         zf.write(f"{base}/invalid_accounts.txt", "invalid_accounts.txt")
         zf.write(f"{base}/summary.txt", "summary.txt")
+    
     return {'zip': zip_path}
   # ============================================================
 #              STATUS, EXPORT, BUTTON CALLBACK
