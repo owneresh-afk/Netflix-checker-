@@ -1109,3 +1109,210 @@ async def generate_result_files(user_id: int, results: List[Dict], batch_data: D
 
 
 # ⬇️⬇️⬇️ PART 8 STARTS RIGHT BELOW THIS LINE ⬇️⬇️⬇️
+async def batch_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/batch command - Check current batch progress"""
+    user_id = update.effective_user.id
+    
+    if user_id in active_batches:
+        batch = active_batches[user_id]
+        elapsed = int(time.time() - batch['start_time'])
+        percent = (batch['completed'] / batch['total'] * 100) if batch['total'] > 0 else 0
+        
+        # Create progress bar
+        filled = int(20 * batch['completed'] / batch['total']) if batch['total'] > 0 else 0
+        bar = f"{S['square'] * filled}{'░' * (20 - filled)}"
+        
+        message = f"""
+{S['fire']} *BATCH STATUS* {S['fire']}
+{S['double_line'] * 35}
+
+{S['package']} Progress: `{batch['completed']:,}/{batch['total']:,}`
+{bar}
+`{percent:.1f}%`
+
+{S['check']} Valid: `{batch['valid']:,}`
+{S['star']} Premium: `{batch['premium']:,}`
+{S['spark']} Free: `{batch['free']:,}`
+{S['cross']} Invalid: `{batch['invalid']:,}`
+
+{S['clock']} Elapsed: `{elapsed // 60}m {elapsed % 60}s`
+{S['speed']} Speed: `{batch['completed'] // max(elapsed, 1)}` cookies/min
+
+{S['double_line'] * 35}
+"""
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await update.message.reply_text(
+            f"{S['info']} *No Active Batch*\n\n"
+            f"{S['pointer']} Send a cookie file to start checking!\n\n"
+            f"{S['copyright']} {DEVELOPER}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+
+async def export_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/export command - Download latest batch results"""
+    user_id = update.effective_user.id
+    
+    # Find latest result directory for this user
+    if not os.path.exists("bulk_results"):
+        await update.message.reply_text(
+            f"{S['cross']} *No Results Found*\n\n{S['pointer']} Run a batch check first!",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    result_dirs = [d for d in os.listdir("bulk_results") 
+                   if d.startswith(str(user_id)) and os.path.isdir(os.path.join("bulk_results", d))]
+    
+    if not result_dirs:
+        await update.message.reply_text(
+            f"{S['cross']} *No Results Found*\n\n"
+            f"{S['pointer']} Run a batch check first!\n\n"
+            f"{S['copyright']} {DEVELOPER}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    # Get most recent result
+    latest_dir = sorted(result_dirs)[-1]
+    zip_path = f"bulk_results/{latest_dir}.zip"
+    
+    if os.path.exists(zip_path):
+        # Send file to user
+        with open(zip_path, 'rb') as f:
+            await update.message.reply_document(
+                document=f,
+                filename=f"netflix_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                caption=f"{S['package']} *Batch Results*\n\n"
+                        f"{S['check']} Premium accounts include NFToken login links!\n\n"
+                        f"{S['copyright']} {DEVELOPER} | {S['link']} {CHANNEL_LINK}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+    else:
+        await update.message.reply_text(
+            f"{S['cross']} *File Not Found*\n\n{S['warning']} Please run a new batch!",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle inline button clicks"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("confirm_"):
+        user_id = int(data.split("_")[1])
+        if 'pending_batch' in context.user_data:
+            batch = context.user_data.pop('pending_batch')
+            await process_batch(update, context, user_id, batch['bundles'])
+    
+    elif data.startswith("cancel_"):
+        if 'pending_batch' in context.user_data:
+            context.user_data.pop('pending_batch')
+        await query.edit_message_text(
+            f"{S['cross']} *Batch Cancelled*\n\n{S['copyright']} {DEVELOPER}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    
+    elif data == "batch":
+        await batch_status(update, context)
+    
+    elif data == "stats":
+        await stats_command(update, context)
+    
+    elif data == "export":
+        await export_results(update, context)
+
+
+# ⬇️⬇️⬇️ PART 9 STARTS RIGHT BELOW THIS LINE ⬇️⬇️⬇️
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors gracefully without crashing the bot"""
+    print(f"⚠️ Error occurred: {context.error}")
+    
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                f"{S['cross']} *System Error*\n\n"
+                f"{S['warning']} An unexpected error occurred!\n\n"
+                f"{S['pointer']} Please try again or contact {DEVELOPER}\n\n"
+                f"{S['copyright']} {DEVELOPER}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except:
+            pass  # Silent fail if can't send message
+
+
+def main():
+    """Main function to start the bot"""
+    
+    # Check if bot token is configured
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print(f"\n{S['cross']} {S['cross']} {S['cross']}")
+        print(f"{S['warning']} BOT TOKEN NOT CONFIGURED!")
+        print(f"{S['cross']} {S['cross']} {S['cross']}\n")
+        print(f"{S['pointer']} How to get a token:")
+        print(f"   1. Open Telegram and search for @BotFather")
+        print(f"   2. Send /newbot")
+        print(f"   3. Choose a name for your bot")
+        print(f"   4. Choose a username (must end with 'bot')")
+        print(f"   5. Copy the token you receive\n")
+        print(f"{S['pointer']} Then set it as environment variable:")
+        print(f"   export BOT_TOKEN='your_token_here'\n")
+        print(f"{S['link']} Or edit the file and replace YOUR_BOT_TOKEN_HERE\n")
+        return
+    
+    # Print startup banner
+    print(f"""
+{S['double_line'] * 48}
+{S['star']} BULK NETFLIX CHECKER BOT {S['star']}
+{S['double_line'] * 48}
+
+{S['rocket']} Developer: {DEVELOPER}
+{S['link']} Channel: {CHANNEL_LINK}
+{S['speed']} Max Workers: {MAX_WORKERS}
+{S['package']} Batch Size: {BATCH_SIZE}
+{S['check']} Status: Starting...
+
+{S['double_line'] * 48}
+""")
+    
+    # Create application
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    # Add command handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("batch", batch_status))
+    app.add_handler(CommandHandler("export", export_results))
+    
+    # Add callback handler for buttons
+    app.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Add file handler
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_bulk_file))
+    
+    # Add error handler
+    app.add_error_handler(error_handler)
+    
+    # Start the bot
+    print(f"{S['check']} Bot is running! Send /start on Telegram")
+    print(f"{S['clock']} Press Ctrl+C to stop\n")
+    
+    try:
+        app.run_polling(allowed_updates=[Update.MESSAGE, Update.CALLBACK_QUERY])
+    except KeyboardInterrupt:
+        print(f"\n{S['cross']} Bot stopped by user")
+    except Exception as e:
+        print(f"\n{S['cross']} Fatal error: {e}")
+
+
+# ============================================================
+#                    ENTRY POINT
+# ============================================================
+
+if __name__ == "__main__":
+    main()
