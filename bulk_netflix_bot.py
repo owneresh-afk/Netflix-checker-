@@ -1229,21 +1229,39 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ⬇️⬇️⬇️ PART 9 STARTS RIGHT BELOW THIS LINE ⬇️⬇️⬇️
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors gracefully without crashing the bot"""
-    print(f"⚠️ Error occurred: {context.error}")
+    """Handle errors gracefully but also log them for debugging"""
+    import traceback
     
+    # Get full error details
+    error = context.error
+    error_type = type(error).__name__
+    error_msg = str(error)
+    traceback_str = traceback.format_exc()
+    
+    # Print to console (Railway logs will show this)
+    print(f"\n{'='*50}")
+    print(f"❌ ERROR: {error_type}")
+    print(f"📝 Message: {error_msg}")
+    print(f"📚 Traceback:\n{traceback_str}")
+    print(f"{'='*50}\n")
+    
+    # Send error details to user (only first 400 chars to avoid spam)
     if update and update.effective_message:
         try:
+            # Show the actual error to the user (for debugging)
+            error_preview = f"{error_type}: {error_msg[:300]}"
             await update.effective_message.reply_text(
-                f"{S['cross']} *System Error*\n\n"
-                f"{S['warning']} An unexpected error occurred!\n\n"
-                f"{S['pointer']} Please try again or contact {DEVELOPER}\n\n"
+                f"{S['cross']} *Error Occurred*\n\n"
+                f"```\n{error_preview}\n```\n\n"
+                f"{S['pointer']} Check bot logs for full details.\n\n"
                 f"{S['copyright']} {DEVELOPER}",
                 parse_mode=ParseMode.MARKDOWN
             )
-        except:
-            pass  # Silent fail if can't send message
-
+        except Exception as e:
+            # Fallback if markdown fails
+            await update.effective_message.reply_text(
+                f"❌ Error: {error_type}\n{error_msg[:200]}"
+            )
 
 def main():
     """Main function to start the bot"""
