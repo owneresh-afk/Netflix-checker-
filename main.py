@@ -632,4 +632,104 @@ async def process_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, uid:
         zf.write(f"{base}/invalid_accounts.txt", "invalid_accounts.txt")
         zf.write(f"{base}/summary.txt", "summary.txt")
     return {'zip': zip_path}
-  
+  # ============================================================
+#              STATUS, EXPORT, BUTTON CALLBACK
+# ============================================================
+
+async def batch_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    target = chat_target(update)
+    if not target:
+        return
+    uid = update.effective_user.id
+    if uid in active_batches:
+        b = active_batches[uid]
+        elapsed = int(time.time() - b['start_time'])
+        percent = (b['completed']/b['total']*100) if b['total'] else 0
+        filled = int(20 * b['completed'] / b['total']) if b['total'] else 0
+        bar = f"{S['square']*filled}{'░'*(20-filled)}"
+        text = f"{S['fire']} <b>BATCH STATUS</b> {S['fire']}\n{S['double_line']*35}\n"
+        text += f"{S['package']} Progress: <code>{b['completed']:,}/{b['total']:,}</code>\n{bar}\n<code>{percent:.1f}%</code>\n"
+        text += f"{S['check']} Valid: <code>{b['valid']:,}</code>\n{S['star']} Premium: <code>{b['premium']:,}</code>\n"
+        text += f"{S['spark']} Free: <code>{b['free']:,}</code>\n{S['cross']} Invalid: <code>{b['invalid']:,}</code>\n"
+        text += f"{S['clock']} Elapsed: <code>{elapsed//60}m {elapsed%60}s</code>\n"
+        text += f"{S['speed']} Speed: <code>{b['completed']//max(elapsed,1)}</code> cookies/min"
+        await target.reply_text(text, parse_mode=ParseMode.HTML)
+    else:
+        await target.reply_text(f"{S['info']} <b>No Active Batch</b>\n\nSend a cookie file to start.", parse_mode=ParseMode.HTML)
+
+async def export_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    target = chat_target(update)
+    if not target:
+        return
+    uid = update.effective_user.id
+    if not os.path.exists("bulk_results"):
+        await target.reply_text(f"{S['cross']} No results yet.", parse_mode=ParseMode.HTML)
+        return
+    dirs = [d for d in os.listdir("bulk_results") if d.startswith(str(uid)) and os.path.isdir(os.path.join("bulk_results", d))]
+    if not dirs:
+        await target.reply_text(f"{S['cross']} No results found.", parse_mode=ParseMode.HTML)
+        return
+    latest = sorted(dirs)[-1]
+    zip_path = f"bulk_results/{latest}.zip"
+    if os.path.exists(zip_path):
+        with open(zip_path, 'rb') as f:
+            await target.reply_document(document=f, filename=f"netflix_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                                        caption=f"{S['package']} Batch Results\n{S['copyright']} {DEVELOPER}",
+                                        parse_mode=ParseMode.HTML)
+    else:
+        await target.reply_text(f"{S['cross']} File missing.", parse_mode=ParseMode.HTML)
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    if data.startswith("confirm_"):
+        uid = int(data.split("_")[1])
+        if 'pending_batch' in context.user_data:
+            batch = context.user_data.pop('pending_batch')
+            await process_batch(update, context, uid, batch['bundles'])
+    elif data.startswith("cancel_"):
+        context.user_data.pop('pending_batch', None)
+        await query.edit_message_text(f"{S['cross']} Batch Cancelled", parse_mode=ParseMode.HTML)
+    elif data == "batch":
+        await batch_status(update, context)
+    elif data == "stats":
+        await stats_command(update, context)
+    elif data == "export":
+        await export_results(update, context)
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import traceback
+    error = context.error
+    etype = type(error).__name__
+    msg = str(error)
+    print(f"\n{'='*50}\nERROR: {etype}\n{msg}\n{traceback.format_exc()}\n{'='*50}")
+    target = chat_target(update)
+    if target:
+        try:
+            await target.reply_text(
+                f"{S['cross']} <b>Error</b>: <code>{etype}: {msg[:200]}</code>\nCheck logs.",
+                parse_mode=ParseMode.HTML
+            )
+        except:
+            pass
+
+def main():
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print("❌ Set BOT_TOKEN environment variable")
+        return
+    print(f"\n{S['double_line']*48}\n{S['star']} BULK NETFLIX CHECKER {S['star']}\n{S['double_line']*48}\nStarting...")
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("batch", batch_status))
+    app.add_handler(CommandHandler("export", export_results))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_bulk_file))
+    app.add_error_handler(error_handler)
+    print("Bot is running. Press Ctrl+C to stop.")
+    app.run_polling(allowed_updates=[Update.MESSAGE, Update.CALLBACK_QUERY])
+
+if __name__ == "__main__":
+    main()
