@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  netflix-bot:
+    build: .
+    container_name: netflix-bulk-checker
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+    volumes:
+      - ./temp_cookies:/app/temp_cookies
+      - ./bot_output:/app/bot_output
+      - ./bulk_results:/app/bulk_results
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
